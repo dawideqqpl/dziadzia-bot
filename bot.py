@@ -54,7 +54,16 @@ async def on_ready():
 # ---------- komenda zabawowa ----------
 @bot.command(name="kondom")
 async def kondom(ctx: commands.Context, member: discord.Member = None):
-    value = random.randint(1, 100)
+    # jeśli ktoś został oznaczony, to on jest targetem; jeśli nie, to autor
+    target = member if member else ctx.author
+
+    # jeżeli target albo autor to "derbengaming"
+    if target.name.lower() == "derbengaming" or ctx.author.name.lower() == "derbengaming":
+        value = random.choice([99, 100])
+    else:
+        value = random.randint(1, 100)
+
+    # odpowiedź
     if member:
         await ctx.send(f"{member.mention} jest kondomem w {value}% PykPykPyk!")
     else:
