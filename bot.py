@@ -30,25 +30,17 @@ intents.message_content = True  # pamiętaj też włączyć w Dev Portal
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------- trwały plik z dźwiękami ----------
-SOUNDS_DIR = os.getenv("SOUNDS_DIR", "/data")  # ustaw w Render → ENV, jeśli chcesz inną ścieżkę
-os.makedirs(SOUNDS_DIR, exist_ok=True)
-SOUNDS_FILE = os.path.join(SOUNDS_DIR, "sounds.json")
-
-if os.path.exists(SOUNDS_FILE):
-    with open(SOUNDS_FILE, "r", encoding="utf-8") as f:
-        try:
-            SOUNDS = json.load(f)
-        except json.JSONDecodeError:
+# ---------- lista dźwięków w pamięci (bez plików) ----------
+# Opcjonalnie: startowe wpisy w ENV SOUNDS_JSON, np. {"chrupiaca":"https://.../qicCm.mp3"}
+SOUNDS: dict[str, str] = {}
+try:
+    env_json = os.getenv("SOUNDS_JSON")
+    if env_json:
+        SOUNDS = json.loads(env_json)
+        if not isinstance(SOUNDS, dict):
             SOUNDS = {}
-else:
+except Exception:
     SOUNDS = {}
-
-def save_sounds():
-    tmp = SOUNDS_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(SOUNDS, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, SOUNDS_FILE)  # atomiczny zapis
 
 # ---------- status ----------
 @bot.event
@@ -68,14 +60,14 @@ async def kondom(ctx: commands.Context, member: discord.Member = None):
     else:
         await ctx.send(f"Jesteś kondomem w {value}%")
 
-# ---------- soundboard: create/list ----------
+# ---------- soundboard: create/list (bez trwałego zapisu) ----------
 @bot.command(name="kulawy")
 async def kulawy(ctx: commands.Context, subcommand: str = None, name: str = None, url: str = None):
     if subcommand == "create":
         if not name or not url:
             return await ctx.send("Użycie: `!kulawy create NAZWA LINK`")
         SOUNDS[name] = url
-        save_sounds()
+        # Uwaga: brak zapisu do pliku; po restarcie zniknie, chyba że dodasz do ENV SOUNDS_JSON
         return await ctx.send(f"✅ Dodałem dźwięk **{name}** → {url}")
     elif subcommand == "list":
         if not SOUNDS:
@@ -152,8 +144,8 @@ async def playsound(ctx: commands.Context, name_or_url: str = None):
         if vc.is_playing():
             vc.stop()
         audio = discord.FFmpegPCMAudio(source_url, **ffmpeg_options)
-        # (opcjonalnie głośność)
-        # audio = discord.PCMVolumeTransformer(audio, volume=0.75)
+        # (opcjonalnie) głośność:
+        # audio = discord.PCMVolumeTransformer(audio, volume=0.8)
 
         vc.play(audio)
         await ctx.send(f"▶️ Gram: **{pretty}**")
