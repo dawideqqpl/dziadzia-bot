@@ -38,9 +38,12 @@ async def on_ready():
     )
 
 @bot.command(name="kondom")
-async def kondom(ctx: commands.Context):
+async def kondom(ctx: commands.Context, member: discord.Member = None):
     value = random.randint(1, 100)
-    await ctx.send(f"Jesteś kondomem w {value}%")
+    if member:  # jeśli ktoś został oznaczony
+        await ctx.send(f"{member.mention} jest kondomem w {value}% PykPykPyk!")
+    else:  # jeśli nie
+        await ctx.send(f"Jesteś kondomem w {value}%")
 
 async def main():
     # serwer HTTP + bot równolegle
