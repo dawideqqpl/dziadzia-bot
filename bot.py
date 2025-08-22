@@ -1,72 +1,80 @@
-import os
-import random
-import asyncio
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
+import json
+import os
 
-# --- prosty serwer HTTP dla Render ---
-from aiohttp import web
+INTENTS = discord.Intents.default()
+INTENTS.message_content = True
+bot = commands.Bot(command_prefix="!", intents=INTENTS)
 
-async def health(_):
-    return web.Response(text="ok")
+SOUNDS_FILE = "sounds.json"
 
-async def start_http_server():
-    app = web.Application()
-    app.router.add_get("/health", health)   # <-- endpoint /health
-    port = int(os.getenv("PORT", "10000"))  # Render ustawia PORT automatycznie
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=port)
-    await site.start()
-    print(f"[web] listening on 0.0.0.0:{port} (health at /health)")
+# wczytaj dźwięki z pliku
+if os.path.exists(SOUNDS_FILE):
+    with open(SOUNDS_FILE, "r", encoding="utf-8") as f:
+        sounds = json.load(f)
+else:
+    sounds = {}
 
-# --- Discord bot ---
-load_dotenv()
-
-intents = discord.Intents.default()
-intents.message_content = True  # pamiętaj też włączyć w Dev Portal
-
-bot = commands.Bot(command_prefix="!", intents=intents)
+def save_sounds():
+    with open(SOUNDS_FILE, "w", encoding="utf-8") as f:
+        json.dump(sounds, f, indent=2, ensure_ascii=False)
 
 @bot.event
 async def on_ready():
-    print(f"Zalogowano jako {bot.user} (ID: {bot.user.id})")
-    await bot.change_presence(
-        status=discord.Status.online,
-        activity=discord.Game(name="!kondom")
-    )
+    print(f"Zalogowano jako {bot.user}")
 
-@bot.command(name="kondom")
-async def kondom(ctx: commands.Context, *, _rest: str = ""):
-    # bierz pierwszy mention z wiadomości, jeśli jest
-    member = ctx.message.mentions[0] if ctx.message.mentions else None
+# -------------------
+# !kulawy create NAZWA LINK
+# -------------------
+@bot.command(name="kulawy")
+async def kulawy(ctx, subcommand: str, name: str = None, url: str = None):
+    if subcommand == "create":
+        if not name or not url:
+            return await ctx.send("Użycie: `!kulawy create NAZWA LINK`")
+        sounds[name] = url
+        save_sounds()
+        await ctx.send(f"✅ Dodałem dźwięk **{name}** → {url}")
 
-    value = random.randint(1, 100)
-    if member:
-        await ctx.send(f"{member.mention} jest kondomem w {value}% PykPykPyk!")
-    else:
-        await ctx.send(f"Jesteś kondomem w {value}%")
+    elif subcommand == "list":
+        if not sounds:
+            return await ctx.send("❌ Brak zapisanych dźwięków.")
+        msg = "\n".join([f"• {k} → {v}" for k, v in sounds.items()])
+        await ctx.send(f"📀 Zapisane dźwięki:\n{msg}")
 
+# -------------------
+# !playsound NAZWA
+# -------------------
+@bot.command(name="playsound")
+async def playsound(ctx, name: str = None):
+    if not name:
+        return await ctx.send("Podaj nazwę dźwięku, np. `!playsound chrupiaca`")
 
-async def main():
-    # serwer HTTP + bot równolegle
-    http_task = asyncio.create_task(start_http_server())
+    if name not in sounds:
+        return await ctx.send(f"❌ Nie znam dźwięku **{name}**")
 
-    token = os.getenv("DISCORD_TOKEN")
-    if not token:
-        raise RuntimeError("Brak DISCORD_TOKEN w zmiennych środowiskowych")
+    url = sounds[name]
 
-    bot_task = asyncio.create_task(bot.start(token))
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        return await ctx.send("Wejdź najpierw na kanał głosowy.")
 
-    done, pending = await asyncio.wait(
-        {http_task, bot_task},
-        return_when=asyncio.FIRST_EXCEPTION
-    )
-    for t in done:
-        exc = t.exception()
-        if exc:
-            raise exc
+    voice_channel = ctx.author.voice.channel
+    vc: discord.VoiceClient | None = ctx.voice_client
+    if vc and vc.channel != voice_channel:
+        await vc.move_to(voice_channel)
+    elif not vc:
+        vc = await voice_channel.connect()
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    ffmpeg_options = {
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "options": "-vn"
+    }
+
+    audio = discord.FFmpegPCMAudio(url, **ffmpeg_options)
+    vc.play(audio)
+
+    await ctx.send(f"▶️ Gram: **{name}**")
+
+    while vc.is_playing():
+        await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.utcnow().__class__.resolution)
+    await vc.disconnect()
