@@ -38,12 +38,16 @@ async def on_ready():
     )
 
 @bot.command(name="kondom")
-async def kondom(ctx: commands.Context, member: discord.Member = None):
+async def kondom(ctx: commands.Context, *, _rest: str = ""):
+    # bierz pierwszy mention z wiadomości, jeśli jest
+    member = ctx.message.mentions[0] if ctx.message.mentions else None
+
     value = random.randint(1, 100)
-    if member:  # jeśli ktoś został oznaczony
+    if member:
         await ctx.send(f"{member.mention} jest kondomem w {value}% PykPykPyk!")
-    else:  # jeśli nie
+    else:
         await ctx.send(f"Jesteś kondomem w {value}%")
+
 
 async def main():
     # serwer HTTP + bot równolegle
